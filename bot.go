@@ -9,14 +9,16 @@ import (
         "os"
         "time"
         "strconv"
-        base64 "encoding/base64"
+        "encoding/base64"
+        "strings"
 
         "golang.org/x/net/context"
         "golang.org/x/oauth2"
         "golang.org/x/oauth2/google"
         "google.golang.org/api/gmail/v1"
 
-	"github.com/subosito/gotenv"
+        "github.com/subosito/gotenv"
+        "github.com/grokify/html-strip-tags-go"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
@@ -75,6 +77,45 @@ func saveToken(path string, token *oauth2.Token) {
         json.NewEncoder(f).Encode(token)
 }
 
+func normalizeRaw(rawString string) string {
+        fmt.Println("rawString")
+        fmt.Println(rawString)
+        rawString =  strip.StripTags(rawString)
+        title := trim(rawString, ".: Summary :.", "Error detected in: Bukalapak (production)")
+        summary := trim(rawString, ".: Trace :.",".: Summary :.")
+        trace := trim(rawString, "Full report here:", ".: Trace :.")
+        link := trim2(rawString, "Reply to this email to comment", "Full report here:")
+        return "*[" + title + "]*\n" + summary + "\n ```\n" + trace + "\n```" + link
+}
+
+func trim(rawString string, right string, left string) string {
+        idx := strings.Index(rawString, left) + len(left)
+        idx2 := strings.Index(rawString, right)
+        if idx2 == -1 {
+                idx2 = len(rawString) - 1
+        }
+        if idx == -1 || idx2 == -1 {
+                return ""
+        }
+        return strings.Trim(rawString[idx:idx2], "\n")
+}
+
+func trim2(rawString string, right string, left string) string {
+        idx := strings.Index(rawString, left) + len(left)
+        idx2 := strings.Index(rawString, right)
+        if idx == -1 || idx2 == -1 {
+                return ""
+        }
+        return "\nLink lengkap: " + strings.Trim(rawString[idx:idx2], "\n")
+}
+
+func trimStringFromDot(s string) string {
+	if idx := strings.Index(s, "."); idx != -1 {
+		return s[:idx]
+	}
+	return s
+}
+
 func getNewMessages(srv *gmail.Service, bot *tb.Bot, previous time.Time) {
         user := "me"
         rThread, err := srv.Users.Threads.Get(user, os.Getenv("THREAD_ID")).Do()
@@ -92,9 +133,12 @@ func getNewMessages(srv *gmail.Service, bot *tb.Bot, previous time.Time) {
                 if l.InternalDate < (previous.Unix() * 1000) {
                         continue
                 }
-                b, _ := base64.StdEncoding.DecodeString(l.Payload.Parts[0].Body.Data)
-                b2, _ := base64.StdEncoding.DecodeString(l.Payload.Parts[1].Body.Data)
-                bot.Send((&tb.User{ ID: id}), string(b) + string(b2), tb.ModeMarkdown)
+                rawString := l.Payload.Body.Data
+                for _, p := range l.Payload.Parts {
+                        b, _ := base64.StdEncoding.DecodeString(p.Body.Data)
+                        rawString = rawString + string(b)
+                }
+                bot.Send((&tb.Chat{ ID: int64(id)}), normalizeRaw(rawString), tb.ModeMarkdown)
         }
 }
 
@@ -112,6 +156,7 @@ func main() {
         b, err := ioutil.ReadFile("credentials.json")
         if err != nil {
                 log.Fatalf("Unable to read client secret file: %v", err)
+                return
         }
 
         // If modifying these scopes, delete your previously saved token.json.

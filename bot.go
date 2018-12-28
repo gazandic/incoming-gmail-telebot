@@ -17,7 +17,8 @@ import (
         "golang.org/x/oauth2/google"
         "google.golang.org/api/gmail/v1"
 
-	"github.com/subosito/gotenv"
+        "github.com/subosito/gotenv"
+        "github.com/grokify/html-strip-tags-go"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
@@ -77,11 +78,14 @@ func saveToken(path string, token *oauth2.Token) {
 }
 
 func normalizeRaw(rawString string) string {
+        fmt.Println("rawString")
+        fmt.Println(rawString)
+        rawString =  strip.StripTags(rawString)
         title := trim(rawString, ".: Summary :.", "Error detected in: Bukalapak (production)")
         summary := trim(rawString, ".: Trace :.",".: Summary :.")
         trace := trim(rawString, "Full report here:", ".: Trace :.")
-        link := trim(rawString, "Reply to this email to comment", "Full report here:")
-        return "`" + title + "`\n" + summary + "\n\n ```\n" + trace + "\n``` \n\n Link lengkap: " + link
+        link := trim2(rawString, "Reply to this email to comment", "Full report here:")
+        return "*[" + title + "]*\n" + summary + "\n ```\n" + trace + "\n```" + link
 }
 
 func trim(rawString string, right string, left string) string {
@@ -94,6 +98,15 @@ func trim(rawString string, right string, left string) string {
                 return ""
         }
         return strings.Trim(rawString[idx:idx2], "\n")
+}
+
+func trim2(rawString string, right string, left string) string {
+        idx := strings.Index(rawString, left) + len(left)
+        idx2 := strings.Index(rawString, right)
+        if idx == -1 || idx2 == -1 {
+                return ""
+        }
+        return "\nLink lengkap: " + strings.Trim(rawString[idx:idx2], "\n")
 }
 
 func trimStringFromDot(s string) string {
@@ -125,7 +138,7 @@ func getNewMessages(srv *gmail.Service, bot *tb.Bot, previous time.Time) {
                         b, _ := base64.StdEncoding.DecodeString(p.Body.Data)
                         rawString = rawString + string(b)
                 }
-                bot.Send((&tb.User{ ID: id}), normalizeRaw(rawString), tb.ModeMarkdown)
+                bot.Send((&tb.Chat{ ID: int64(id)}), normalizeRaw(rawString), tb.ModeMarkdown)
         }
 }
 
@@ -143,6 +156,7 @@ func main() {
         b, err := ioutil.ReadFile("credentials.json")
         if err != nil {
                 log.Fatalf("Unable to read client secret file: %v", err)
+                return
         }
 
         // If modifying these scopes, delete your previously saved token.json.

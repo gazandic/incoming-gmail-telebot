@@ -94,7 +94,6 @@ func trim(rawString string, right string, left string) string {
                 return ""
         }
         return strings.Trim(rawString[idx:idx2], "\n")
-        // return strings.Trim(strings.TrimLeft(strings.TrimRight(rawString, right), left), "\n")
 }
 
 func trimStringFromDot(s string) string {
